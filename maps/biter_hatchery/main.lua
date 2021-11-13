@@ -78,20 +78,36 @@ local function spawn_worm_turret(surface, force_name)
     surface.create_decoratives {check_collision = false, decoratives = {{name = 'enemy-decal', position = position, amount = 1}}}
 end
 
+local unlock_progress_table = {
+    ['automation-science-pack'] = {0, 0},
+    ['logistic-science-pack'] = {0, 200},
+    ['military-science-pack'] = {0, 200},
+    ['chemical-science-pack'] = {0, 200},
+    ['production-science-pack'] = {0, 200},
+    ['utility-science-pack'] = {0, 200},
+    ['space-science-pack'] = {0, 200}
+}
+
 local function spawn_units(belt, food_item, removed_item_count)
     local count_per_flask = unit_raffle[food_item][2]
     local raffle = unit_raffle[food_item][1]
     local team = global.map_forces[belt.force.name]
+    local unlock_cost = unlock_progress_table[food_item][2]
     team.unit_health_boost = team.unit_health_boost + (health_boost_food_values[food_item] * removed_item_count)
     for _ = 1, removed_item_count, 1 do
-        for _ = 1, count_per_flask, 1 do
-            local name = raffle[math_random(1, #raffle)]
-            local unit = belt.surface.create_entity({name = name, position = belt.position, force = belt.force})
-            unit.ai_settings.allow_destroy_when_commands_fail = false
-            unit.ai_settings.allow_try_return_to_spawner = false
-            Unit_health_booster.add_unit(unit, team.unit_health_boost)
-            team.units[unit.unit_number] = unit
-            team.unit_count = team.unit_count + 1
+        local unlock_progress = unlock_progress_table[food_item][1]
+        if unlock_progress < unlock_cost then
+            unlock_progress_table[food_item][1] = unlock_progress + 1
+        else
+            for _ = 1, count_per_flask, 1 do
+                local name = raffle[math_random(1, #raffle)]
+                local unit = belt.surface.create_entity({name = name, position = belt.position, force = belt.force})
+                unit.ai_settings.allow_destroy_when_commands_fail = false
+                unit.ai_settings.allow_try_return_to_spawner = false
+                Unit_health_booster.add_unit(unit, team.unit_health_boost)
+                team.units[unit.unit_number] = unit
+                team.unit_count = team.unit_count + 1
+            end
         end
     end
     if math_random(1, 8) == 1 then
@@ -113,8 +129,20 @@ end
 
 local nom_msg = {'munch', 'munch', 'yum', 'nom'}
 
-local function feed_floaty_text(entity)
-    entity.surface.create_entity({name = 'flying-text', position = entity.position, text = nom_msg[math_random(1, 4)], color = {math_random(50, 100), 0, 255}})
+local function feed_floaty_text(entity, food_item, removed_item_count)
+    local unlock_progress = unlock_progress_table[food_item][1]
+    local unlock_cost = unlock_progress[food_item][2]
+    local text = ""
+    if unlock_progress < unlock_cost then
+        if unlock_progress + removed_item_count >= unlock_cost then
+            text = "Unlocked!"
+        else
+            text = table.concat({'Unlock: ', unlock_progress + removed_item_count, ' / ' , unlock_cost})
+        end
+    else
+        text = nom_msg[math_random(1, 4)]
+    end
+    entity.surface.create_entity({name = 'flying-text', position = entity.position, text = text, color = {math_random(50, 100), 0, 255}})
     local position = {x = entity.position.x - 0.75, y = entity.position.y - 1}
     local b = 1.35
     for a = 1, math_random(0, 2), 1 do
@@ -132,7 +160,7 @@ local function eat_food_from_belt(belt)
             end
             local removed_item_count = line.remove_item({name = food_item, count = 8})
             if removed_item_count > 0 then
-                feed_floaty_text(belt)
+                feed_floaty_text(belt, food_item, removed_item_count)
                 spawn_units(belt, food_item, removed_item_count)
             end
         end
